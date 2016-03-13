@@ -11,14 +11,56 @@ from lstm import LSTM
 from fuel.datasets.youtube_audio import YouTubeAudio
 from fuel.transformers.sequences import Window
 
+from optparse import OptionParser
+
+# Parse options
+parser = OptionParser()
+parser.add_option("-n", "--n-hidden", help="Number of hidden units",
+								 action="store", type="int", dest="hiddenUnits", default=250)
+parser.add_option("-f", "--freq", help="Frequency",
+								 action="store", type="int", dest="freq", default=16000)
+parser.add_option("-B", "--batch-size", help="Size of batches",
+								 action="store", type="int", dest="batchSize", default=20000)
+parser.add_option("-b", "--minibatch-size", help="Size of mini-batches",
+								 action="store", type="int", dest="miniBatches", default=160)
+parser.add_option("-r", "--learning-rate", help="Learning rate",
+								 action="store", type="float", dest="learningRate", default=0.01)
+parser.add_option("-s", "--skip-seconds", help="Number of seconds to skip at the beginning",
+								 action="store", type="float", dest="skipSeconds", default=80)
+parser.add_option("-N", "--n-iter", help="Number of iterations to perform",
+								 action="store", type="int", dest="nIter", default=80)
+parser.add_option("-S", "--stride", help="Stride of the window",
+								 action="store", type="int", dest="stride", default=32000)
+parser.add_option("-y", "--youtube-id", help="YouTube ID",
+								 action="store", type="string", dest="youTubeId", default="XqaJ2Ol5cC4")
+parser.add_option("-m", "--mode", help="Mode (train, generate)",
+								 action="store", type="string", dest="mode", default="train")
+
+(options, args) = parser.parse_args()
+
 # variables
-freq = 16000
-stride = 32000
-hiddenUnits = 250
-batchSize = 20000
-miniBatches = 160
+freq         = options.freq
+stride       = options.stride
+hiddenUnits  = options.hiddenUnits
+batchSize    = options.batchSize
+miniBatches  = options.miniBatches
+learningRate = options.learningRate
+youTubeId    = options.youTubeId
+mode         = options.mode
+skipSeconds  = options.skipSeconds
+nIter        = options.nIter
+
 sequenceSize = batchSize*miniBatches
-learningRate = 0.01 # learning rate
+sequenceSeconds = sequenceSize / freq
+idxBegin = skipSeconds * freq
+idxEnd   = idxBegin + nIter
+
+# Filenames.
+modelBaseName = "lstm-model--id_{0}-batch_{1}-seq_{2}-lr_{3}-nh_{4}".format(youTubeId, batchSize, sequenceSeconds, learningRate, hiddenUnits)
+modelFileName = modelBaseName + ".pkl"
+graphFileName = modelBaseName + ".png"
+soundFileName = modelBaseName + ".wav"
+
 vals = []
 error = np.array([0])
 minError = np.inf
@@ -30,14 +72,12 @@ lstm = LSTM(miniBatches, hiddenUnits, miniBatches)
 
 # retrive datastream
 print("retrieving data...")
-data = YouTubeAudio('XqaJ2Ol5cC4')
+data = YouTubeAudio(youTubeId)
 stream = data.get_example_stream()
 data_stream = Window(stride, sequenceSize, sequenceSize, True, stream)
 
 # switch to configure training or audio generation
-training = True
-
-if training == True:
+if mode == "train":
 
 	print("training begin...")
 	print("Input Size:", batchSize)
@@ -52,7 +92,7 @@ if training == True:
 		u, t = batch_stream
 		
 		# Start somewhere (after 1 minute)
-		if idx>(80*freq):
+		if idx >= idxBegin:
 			u = np.array(u, dtype=np.float64)
 			t = np.array(t, dtype=np.float64)
 			# reshape samples into minibatches
@@ -68,28 +108,28 @@ if training == True:
 			if error<minError:
 				print("LOWEST ERROR")
 				minError = error
-				f = open('LSTM_MODEL_BATCH20000_200s_LR001_HU250.pkl', 'wb')
+				f = open(modelFileName, 'wb')
 				pickle.dump(lstm.params, f)
 				f.close()
 
 		# End somewhere
-		if idx>(80*freq+160): break # 160 iterations
+		if idx >= idxEnd: break
 		idx = idx + 1
 	
 	print("Total sequence trained:", (idx-(80*freq))*(stride/freq), "seconds")
 	
 	# saving and printing
 	plt.plot(vals)
-	plt.savefig('LSTM_PLOT_BATCH20000_200s_LR001_HU250.png')			
-	f = open('LSTM_PLOT_BATCH20000_200s_LR001_HU250.pkl', 'wb')
+	plt.savefig(graphFileName)			
+	f = open(modelFileName, 'wb')
 	pickle.dump(vals, f)
 	f.close()
 	
 
-if training == False:
+elif mode == "generate":
 	
 	# load parameters
-	f = open('LSTM_MODEL_BATCH20000_200s_LR001_HU250.pkl', 'rb') 
+	f = open(modelFileName, 'rb') 
 	lstm.params = pickle.load(f) #load params from file
 	f.close()
 	start = 0;
@@ -104,7 +144,7 @@ if training == False:
 	for batch_stream in data_stream.get_epoch_iterator():
 		
 		# Start somewhere
-		if idx>(240*freq):
+		if idx>idxBegin:
 			if start == 0:
 				# get samples
 				u, t = batch_stream
@@ -126,16 +166,17 @@ if training == False:
 			print ("Iteration:", idx-(60*freq))	
 			
 		# End somewhere
-		if idx>(240*freq+40):break # iterations
+		if idx>idxEnd:break # iterations
 		idx = idx + 1
 		
 	print("Total sequence size generated:", (idx-(240*freq))*(stride/freq), "seconds")
 	
-	f = open('LSTM_GEN_BATCH20000_200s_LR005_HU250.pkl', 'wb')
+	f = open(modelFileName, 'wb')
 	pickle.dump(vals, f)
 	f.close()
 	plt.plot(vals)
-	plt.savefig('LSTM_GEN_PLOT_BATCH20000_200s_LR005_HU250.png')
-	wave.write('LSTM_GEN_PLOT_BATCH20000_200s_LR005_HU250.wav', 16000, np.asarray(vals, dtype=np.float64))
+	plt.savefig(graphFileName)
+	wave.write(soundFileName, 16000, np.asarray(vals, dtype=np.float64))
 			
-
+else:
+	print "Error: unknown mode: '{0}'".format(mode)
