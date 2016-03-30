@@ -17,7 +17,7 @@ class LSTM(object):
 		W_xi = theano.shared(init_weights(n_in, n_i))
 		W_hi = theano.shared(init_weights(n_hidden, n_i))
 		W_ci = theano.shared(init_weights(n_c, n_i))
-		b_i = theano.shared(np.random.uniform(low=-0.5, high=0.5, size=(n_i)))
+		b_i = theano.shared(np.random.uniform(low=-0.1, high=0.1, size=(n_i)))
 		W_xf = theano.shared(init_weights(n_in, n_f))
 		W_hf = theano.shared(init_weights(n_hidden, n_f))
 		W_cf = theano.shared(init_weights(n_c, n_f))
@@ -28,7 +28,7 @@ class LSTM(object):
 		W_xo = theano.shared(init_weights(n_in, n_o))
 		W_ho = theano.shared(init_weights(n_hidden, n_o))
 		W_co = theano.shared(init_weights(n_c, n_o))
-		b_o = theano.shared(np.random.uniform(low=-0.5, high=0.5, size=(n_o)))
+		b_o = theano.shared(np.random.uniform(low=-0.1, high=0.1, size=(n_o)))
 		W_hy = theano.shared(init_weights(n_hidden, n_out))
 		b_y = theano.shared(np.zeros(n_out, dtype=dtype))
 		
@@ -53,10 +53,15 @@ class LSTM(object):
                                               W_xc, W_hc, b_c, W_xo, W_ho, b_o, W_co, W_hy, b_y])
             	
 		#Cost
-		cost = (T.sqrt((t - y)**2)).mean()
+		cost = (T.sqr(t - y)).mean() # sigma^2
+		
+		# Negative Log-Likelihood
+			# LL = $\prod 1/Z * exp( -(f(x)-t)^2 / (2*sigma^2) )
+			# Z = sqrt(2pi * sqrt(2*sigma^2))
+		nll = (T.sqr(t - y)).sum()/(2*cost) + T.log(T.sqrt(2*np.pi*cost))
 		
 		#Updates
-		updates = self.RMSprop(cost, params, learnrate=lr)
+		updates = self.RMSprop(nll, params, learnrate=lr)
 
 		#Theano Functions
 		self.train = theano.function([x, t, lr], cost, 
