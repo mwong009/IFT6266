@@ -148,10 +148,10 @@ elif mode == "generate":
 			if start == 0:
 				# get samples
 				u, t = batch_stream
-				u = np.array(u, dtype=np.float64)		
+				u = np.array((u/0x8000), dtype=np.float64)		
 				start = 1
 			# reshape samples into minibatches
-			uBatch = np.reshape((u/0x8000), (miniBatches,batchSize)).swapaxes(0,1)
+			uBatch = np.reshape(u, (miniBatches,batchSize)).swapaxes(0,1)
 			
 			# generate 1 batch of data
 			prediction = lstm.predict(uBatch)
